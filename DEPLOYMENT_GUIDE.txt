@@ -1,111 +1,100 @@
 ======================================================
  Travel Map Tool  –  Server Deployment Guide
- (Windows Server + IIS + Internal Domain)
+ (Windows Server, No IT Required)
 ======================================================
 
-WHAT YOU NEED BEFORE STARTING
-──────────────────────────────
-• Remote Desktop (RDP) access to the server  OR
-  ask IT to run the scripts on your behalf
-• The internal domain name IT will assign
-  (e.g. maps.yourcompany.com)
-• The server must have internet access to download
-  Python and dependencies (one-time only)
+WHAT YOU NEED
+──────────────
+• Admin access to the server (to run the setup script)
+• The server must have internet access for the first
+  setup run (to download Python + dependencies)
+• The project folder copied to the server
 
 
 STEP 1 — COPY PROJECT TO SERVER
 ─────────────────────────────────
-1. Open your network drive in File Explorer
-2. Navigate to the server folder where apps are stored
-   (ask IT if unsure — e.g. D:\Apps\ or C:\WebApps\)
-3. Copy the entire "travel-map-tool" folder there
+Using your network drive, copy the entire
+"travel-map-tool" folder to the server.
 
-   Example result: D:\Apps\travel-map-tool\
+  Example: D:\Apps\travel-map-tool\
+
+Keep the folder structure exactly as-is.
 
 
-STEP 2 — RUN SERVER SETUP (as Administrator)
-─────────────────────────────────────────────
+STEP 2 — RUN SETUP (one time only)
+────────────────────────────────────
 1. On the server, open the travel-map-tool folder
-2. Right-click "server_setup.bat" → Run as administrator
-3. Wait for it to finish (~3-5 minutes on first run)
-   It will:
-   ✓ Install Python 3.11
-   ✓ Install all dependencies
-   ✓ Register the app as a Windows Service
-     (auto-starts on every reboot)
+2. Right-click "server_setup.bat"
+3. Click "Run as administrator"
+4. Wait ~5 minutes for it to finish
 
-   When done you'll see: "Service is RUNNING on http://127.0.0.1:5000"
+It will automatically:
+  ✓ Download and install Python 3.11
+  ✓ Install all Python dependencies
+  ✓ Open port 5000 in Windows Firewall
+  ✓ Register the app as a Windows Service
+    (starts automatically on every reboot)
 
-
-STEP 3 — SET UP IIS (as Administrator)
-────────────────────────────────────────
-1. Edit setup_iis.ps1 — change this line near the top:
-      $domain = "maps.yourcompany.com"
-   to your actual internal domain name
-
-2. Right-click setup_iis.ps1 → "Run with PowerShell"
-   (If blocked, open PowerShell as Admin and run:
-    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
-    then run the script again)
-
-3. It will:
-   ✓ Install URL Rewrite + ARR modules for IIS
-   ✓ Create an IIS site bound to your domain
-   ✓ Configure reverse proxy → port 5000
+At the end it prints the URL to share with your team,
+something like:
+  http://192.168.1.50:5000
+  http://SERVERNAME:5000
 
 
-STEP 4 — DNS (ask IT)
-───────────────────────
-Ask your IT team to create a DNS record pointing
-your chosen domain to this server's IP address.
+STEP 3 — SHARE THE URL
+────────────────────────
+Send your colleagues the URL printed at the end
+of setup. They open it in any browser on the
+company network. No install needed on their end.
 
-  Example:
-  maps.yourcompany.com  →  192.168.1.50  (server IP)
 
-Once done, anyone on the company network can open:
-  http://maps.yourcompany.com
+THAT'S IT. NO IT INVOLVEMENT NEEDED.
 
 
 MANAGING THE SERVICE
 ──────────────────────
 The app runs as a Windows Service called "TravelMapTool".
-Manage it like any Windows service:
 
-  View status:   sc query TravelMapTool
-  Stop:          sc stop TravelMapTool
-  Start:         sc start TravelMapTool
-  Restart:       sc stop TravelMapTool && sc start TravelMapTool
+Easiest way to manage it:
+  1. Press Win + R, type "services.msc", press Enter
+  2. Find "Travel Map Tool" in the list
+  3. Right-click → Start / Stop / Restart
 
-Or use Services.msc (search "Services" in Start menu).
+Or via Command Prompt (as admin):
+  Start:   sc start TravelMapTool
+  Stop:    sc stop  TravelMapTool
+  Status:  sc query TravelMapTool
 
-Logs are saved to:  travel-map-tool\logs\app.log
+Logs are at:  travel-map-tool\logs\app.log
 
 
 UPDATING THE APP
 ─────────────────
-To deploy updates:
-1. Copy the updated files to the server folder
-   (overwrite existing files)
-2. Restart the service:
+When you receive updated files:
+1. Copy the new files to the server folder
+   (overwrite existing)
+2. Restart the service via services.msc or:
    sc stop TravelMapTool && sc start TravelMapTool
 
 
 TROUBLESHOOTING
 ────────────────
-App not loading?
+Can't reach the URL?
+  → Make sure you're on the company network/VPN
+  → Check the service is running (services.msc)
   → Check logs\app.log for errors
-  → Confirm service is running: sc query TravelMapTool
 
-Domain not resolving?
-  → Confirm IT set up the DNS record
-  → Try the direct IP instead: http://SERVER-IP-ADDRESS
+"Connection refused" error?
+  → Service may be stopped — restart it
+  → Confirm port 5000 is open:
+    netsh advfirewall firewall show rule name="TravelMapTool"
 
-IIS showing 502 Bad Gateway?
-  → The app service may be stopped
-  → Run: sc start TravelMapTool
+Map generation fails?
+  → Check logs\app.log
+  → Restart the service
 
-Permission errors on startup?
-  → Right-click server_setup.bat → Run as administrator
+Service won't start after reboot?
+  → Re-run server_setup.bat as administrator
 
 
 ======================================================

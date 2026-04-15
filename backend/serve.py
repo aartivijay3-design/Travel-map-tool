@@ -8,7 +8,7 @@ Or let NSSM run it as a Windows Service.
 from waitress import serve
 from app import app
 
-HOST = '127.0.0.1'   # IIS reverse proxy talks to localhost only
+HOST = '0.0.0.0'   # accept connections from anywhere on the network
 PORT = 5000
 
 if __name__ == '__main__':
