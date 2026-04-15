@@ -1,0 +1,111 @@
+======================================================
+ Travel Map Tool  –  Server Deployment Guide
+ (Windows Server + IIS + Internal Domain)
+======================================================
+
+WHAT YOU NEED BEFORE STARTING
+──────────────────────────────
+• Remote Desktop (RDP) access to the server  OR
+  ask IT to run the scripts on your behalf
+• The internal domain name IT will assign
+  (e.g. maps.yourcompany.com)
+• The server must have internet access to download
+  Python and dependencies (one-time only)
+
+
+STEP 1 — COPY PROJECT TO SERVER
+─────────────────────────────────
+1. Open your network drive in File Explorer
+2. Navigate to the server folder where apps are stored
+   (ask IT if unsure — e.g. D:\Apps\ or C:\WebApps\)
+3. Copy the entire "travel-map-tool" folder there
+
+   Example result: D:\Apps\travel-map-tool\
+
+
+STEP 2 — RUN SERVER SETUP (as Administrator)
+─────────────────────────────────────────────
+1. On the server, open the travel-map-tool folder
+2. Right-click "server_setup.bat" → Run as administrator
+3. Wait for it to finish (~3-5 minutes on first run)
+   It will:
+   ✓ Install Python 3.11
+   ✓ Install all dependencies
+   ✓ Register the app as a Windows Service
+     (auto-starts on every reboot)
+
+   When done you'll see: "Service is RUNNING on http://127.0.0.1:5000"
+
+
+STEP 3 — SET UP IIS (as Administrator)
+────────────────────────────────────────
+1. Edit setup_iis.ps1 — change this line near the top:
+      $domain = "maps.yourcompany.com"
+   to your actual internal domain name
+
+2. Right-click setup_iis.ps1 → "Run with PowerShell"
+   (If blocked, open PowerShell as Admin and run:
+    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+    then run the script again)
+
+3. It will:
+   ✓ Install URL Rewrite + ARR modules for IIS
+   ✓ Create an IIS site bound to your domain
+   ✓ Configure reverse proxy → port 5000
+
+
+STEP 4 — DNS (ask IT)
+───────────────────────
+Ask your IT team to create a DNS record pointing
+your chosen domain to this server's IP address.
+
+  Example:
+  maps.yourcompany.com  →  192.168.1.50  (server IP)
+
+Once done, anyone on the company network can open:
+  http://maps.yourcompany.com
+
+
+MANAGING THE SERVICE
+──────────────────────
+The app runs as a Windows Service called "TravelMapTool".
+Manage it like any Windows service:
+
+  View status:   sc query TravelMapTool
+  Stop:          sc stop TravelMapTool
+  Start:         sc start TravelMapTool
+  Restart:       sc stop TravelMapTool && sc start TravelMapTool
+
+Or use Services.msc (search "Services" in Start menu).
+
+Logs are saved to:  travel-map-tool\logs\app.log
+
+
+UPDATING THE APP
+─────────────────
+To deploy updates:
+1. Copy the updated files to the server folder
+   (overwrite existing files)
+2. Restart the service:
+   sc stop TravelMapTool && sc start TravelMapTool
+
+
+TROUBLESHOOTING
+────────────────
+App not loading?
+  → Check logs\app.log for errors
+  → Confirm service is running: sc query TravelMapTool
+
+Domain not resolving?
+  → Confirm IT set up the DNS record
+  → Try the direct IP instead: http://SERVER-IP-ADDRESS
+
+IIS showing 502 Bad Gateway?
+  → The app service may be stopped
+  → Run: sc start TravelMapTool
+
+Permission errors on startup?
+  → Right-click server_setup.bat → Run as administrator
+
+
+======================================================
