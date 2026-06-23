@@ -5,6 +5,7 @@ Generates styled luxury route maps using geopandas + matplotlib + Natural Earth 
 from __future__ import annotations   # enables | union syntax on Python 3.10+
 
 import os
+import json
 import math
 import warnings
 import urllib.request
@@ -39,8 +40,99 @@ PALETTE = {
 }
 
 # ─── Natural Earth data ─────────────────────────────────────────────────────────
-DATA_DIR   = os.path.join(os.path.dirname(__file__), 'data')
-_GH        = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/'
+DATA_DIR          = os.path.join(os.path.dirname(__file__), 'data')
+CUSTOM_CITIES_FILE = os.path.join(DATA_DIR, 'custom_cities.json')  # legacy – only used for one-time migration
+_SQLITE_PATH       = os.path.join(DATA_DIR, 'custom_cities.db')
+_DATABASE_URL      = os.environ.get('DATABASE_URL')  # set on Render; absent → SQLite
+
+
+class _CityDB:
+    """Thin wrapper that talks SQLite locally and PostgreSQL on Render."""
+
+    def _connect(self):
+        if _DATABASE_URL:
+            import psycopg2
+            return psycopg2.connect(_DATABASE_URL), '%s'
+        return __import__('sqlite3').connect(_SQLITE_PATH), '?'
+
+    def init(self):
+        conn, _ = self._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS custom_cities (
+                    name TEXT PRIMARY KEY,
+                    lat  REAL NOT NULL,
+                    lon  REAL NOT NULL
+                )
+            ''')
+            conn.commit()
+            self._migrate_json(conn, _)
+        finally:
+            conn.close()
+
+    def _migrate_json(self, conn, ph):
+        """Import existing custom_cities.json once, then remove it."""
+        if not os.path.exists(CUSTOM_CITIES_FILE):
+            return
+        try:
+            with open(CUSTOM_CITIES_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            cur = conn.cursor()
+            for name, coords in data.items():
+                cur.execute(
+                    f'INSERT INTO custom_cities (name,lat,lon) VALUES ({ph},{ph},{ph}) '
+                    f'ON CONFLICT(name) DO NOTHING',
+                    (name, float(coords[0]), float(coords[1]))
+                )
+            conn.commit()
+            os.rename(CUSTOM_CITIES_FILE, CUSTOM_CITIES_FILE + '.migrated')
+        except Exception as exc:
+            print(f'Migration warning: {exc}')
+
+    def load_all(self) -> dict:
+        conn, _ = self._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT name, lat, lon FROM custom_cities')
+            return {row[0]: (float(row[1]), float(row[2])) for row in cur.fetchall()}
+        except Exception:
+            return {}
+        finally:
+            conn.close()
+
+    def upsert(self, name: str, lat: float, lon: float):
+        conn, ph = self._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f'INSERT INTO custom_cities (name,lat,lon) VALUES ({ph},{ph},{ph}) '
+                f'ON CONFLICT(name) DO UPDATE SET lat={ph}, lon={ph}',
+                (name, lat, lon, lat, lon)
+            )
+            conn.commit()
+        except Exception as exc:
+            print(f'Warning – could not persist custom city: {exc}')
+        finally:
+            conn.close()
+
+    def delete(self, name: str) -> bool:
+        conn, ph = self._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute(f'DELETE FROM custom_cities WHERE name = {ph}', (name,))
+            conn.commit()
+            return cur.rowcount > 0
+        except Exception as exc:
+            print(f'Warning – could not delete custom city: {exc}')
+            return False
+        finally:
+            conn.close()
+
+
+_db = _CityDB()
+_db.init()
+_GH               = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/'
 
 NE_GEOJSON = os.path.join(DATA_DIR, 'ne_110m_admin_0_countries.geojson')
 NE_ADMIN1  = os.path.join(DATA_DIR, 'ne_50m_admin_1_states_provinces.geojson')
@@ -885,6 +977,28 @@ CITY_COORDS = {
     'Nosy Be':       (-13.3280,  48.2690),
 }
 
+# ─── Custom city persistence ────────────────────────────────────────────────────
+
+# Merge user-added cities into the live database at import time.
+CITY_COORDS.update(_db.load_all())
+
+
+def add_custom_city(name: str, lat: float, lon: float) -> None:
+    CITY_COORDS[name] = (lat, lon)
+    _db.upsert(name, lat, lon)
+
+
+def get_custom_cities() -> list:
+    return sorted(
+        [{'name': k, 'lat': v[0], 'lon': v[1]} for k, v in _db.load_all().items()],
+        key=lambda x: x['name'].lower()
+    )
+
+
+def delete_custom_city(name: str) -> bool:
+    CITY_COORDS.pop(name, None)
+    return _db.delete(name)
+
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1287,7 +1401,7 @@ def generate_map(cities_input: list[str], country_name: str,
                                 linestyle=(0, (6, 4)), alpha=0.7, zorder=3)
 
         # Labels — only at centroids that fall inside the viewport
-        name_col_a1 = 'name' if 'name' in states.columns else admin_col
+        name_col_a1 = next((c for c in ('name', 'name_en', 'NAME') if c in states.columns), 'name')
         lbl_fs = max(5.0, min(9.0, map_h * 0.30))
         for _, row in states.iterrows():
             try:

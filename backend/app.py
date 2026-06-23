@@ -11,7 +11,9 @@ import traceback
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 
-from map_generator import generate_map, geocode_city, CITY_COORDS, REGIONS, COUNTRY_ALIASES
+from map_generator import (generate_map, geocode_city, CITY_COORDS, REGIONS,
+                           COUNTRY_ALIASES, add_custom_city,
+                           get_custom_cities, delete_custom_city)
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
@@ -85,6 +87,43 @@ def api_geocode():
         if coords:
             result.append({'name': city, 'lat': coords[0], 'lon': coords[1]})
     return jsonify(result)
+
+
+# ── Add custom city ────────────────────────────────────────────────────────────
+
+@app.route('/api/add-city', methods=['POST'])
+def api_add_city():
+    """Persist a user-supplied city coordinate and update the live database."""
+    data = request.get_json(force=True, silent=True) or {}
+    name = str(data.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'City name is required.'}), 422
+    try:
+        lat = float(data['lat'])
+        lon = float(data['lon'])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'error': 'Valid lat and lon are required.'}), 422
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return jsonify({'error': 'Coordinates out of range.'}), 422
+    add_custom_city(name, lat, lon)
+    return jsonify({'ok': True, 'name': name, 'lat': lat, 'lon': lon})
+
+
+# ── Custom city management ─────────────────────────────────────────────────────
+
+@app.route('/api/custom-cities')
+def api_list_custom_cities():
+    return jsonify(get_custom_cities())
+
+@app.route('/api/delete-city', methods=['POST'])
+def api_delete_city():
+    data = request.get_json(force=True, silent=True) or {}
+    name = str(data.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'City name is required.'}), 422
+    if not delete_custom_city(name):
+        return jsonify({'error': f'"{name}" not found in custom database.'}), 404
+    return jsonify({'ok': True})
 
 
 # ── Autocomplete helpers ────────────────────────────────────────────────────────
