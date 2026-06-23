@@ -7,6 +7,7 @@ GET  /api/cities                                    → [city names]
 GET  /api/regions                                   → {regions, aliases}
 """
 
+import os
 import traceback
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -15,7 +16,8 @@ from map_generator import (generate_map, geocode_city, CITY_COORDS, REGIONS,
                            COUNTRY_ALIASES, add_custom_city,
                            get_custom_cities, delete_custom_city)
 
-app = Flask(__name__, static_folder='../frontend', static_url_path='')
+_here = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=os.path.join(_here, '..', 'frontend'), static_url_path='')
 CORS(app)
 
 
