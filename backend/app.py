@@ -17,7 +17,7 @@ from map_generator import (generate_map, geocode_city, CITY_COORDS, REGIONS,
                            get_custom_cities, delete_custom_city)
 
 _here = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, static_folder=os.path.join(_here, '..', 'frontend'), static_url_path='')
+app = Flask(__name__, static_folder=os.path.join(_here, 'frontend'), static_url_path='')
 CORS(app)
 
 
